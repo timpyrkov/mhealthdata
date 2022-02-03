@@ -9,13 +9,13 @@ Documentation
    :maxdepth: 2
    :caption: Loading data
 
-   dataLoader
+   dataloader.rst
 
 .. toctree::
    :maxdepth: 2
    :caption: Utility functions
 
-   utils
+   utils.rst
 
 .. toctree::
    :maxdepth: 2
