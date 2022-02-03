@@ -90,4 +90,5 @@ print(f'Correlation {r:.2f}, P-value {p:.2g}')
 
 
 # Documentation
-Detailed documentation
+
+[https://mhealthdata.readthedocs.io](https://mhealthdata.readthedocs.io)
