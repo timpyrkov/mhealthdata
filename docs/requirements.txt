@@ -3,4 +3,3 @@ nbsphinx
 numpy 
 pandas 
 tqdm
-mhealthdata
