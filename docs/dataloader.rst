@@ -2,7 +2,7 @@
 Basic DataLoader class
 ----------------------
 
-.. autoclass:: mhealthdata.dataloader.DataLoader
+.. autoclass:: dataloader.DataLoader
    :members:
 
 

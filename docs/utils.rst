@@ -2,7 +2,7 @@
 Utility functions
 -----------------
 
-.. automodule:: mhealthdata.utils
+.. automodule:: utils
    :members:
 
 
