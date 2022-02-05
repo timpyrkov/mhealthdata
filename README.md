@@ -85,7 +85,7 @@ r, p = pearsonr(x[mask], y[mask])
 print(f'Correlation {r:.2f}, P-value {p:.2g}')
 ```
 - Missing data are a certaing problem in wearable data analysis
-- A study [Pyrkov T.V. et al., Nat Comms 12, 2765 (2021)](https://doi.org/10.1038/s41467-021-23014-1) shows high consistency of recovery rates in quite different biological signals - physical activity measured by consumer wearable devices and laboratory blood cell counts. The typical recovery time of 1-2 weeks. The finding suggests it may be safe to use averaging windows or impute data gaps of several day length (though both affect noise and correlation and therefore should be used with caution).
+- A study [Pyrkov T.V. et al., Nat Comms 12, 2765 (2021)](https://www.nature.com/articles/s41467-021-23014-1) shows high consistency of recovery rates in quite different biological signals - physical activity measured by consumer wearable devices and laboratory blood cell counts. The typical recovery time of 1-2 weeks. The finding suggests it may be safe to use averaging windows or impute data gaps of several day length (though both affect noise and correlation and therefore should be used with caution).
 
 
 
