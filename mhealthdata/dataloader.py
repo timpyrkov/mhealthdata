@@ -833,7 +833,7 @@ class ShealthLoader(DataLoader):
             dev_name = np.where(dev_name == "nan", df["model"], dev_name)
             dev_name = np.where(dev_group == 360003, df["name"], dev_name)
             dev_name = [clean_username(name) for name in dev_name]
-            dev_name = np.array(dev_name, category=str)
+            dev_name = np.array(dev_name, dtype=str)
             dev["all"] = dev_uuid
             if 360001 in dev_group:
                 dev["mobile"] = dev_uuid[dev_group == 360001]
