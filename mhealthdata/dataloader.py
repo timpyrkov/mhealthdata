@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import xml.etree.ElementTree as ET
+from lxml import etree
 import json
 import glob
 from mhealthdata.utils import *
@@ -32,10 +33,15 @@ class DataLoader():
     Methods are device-centric and can be used to get data for any specific device
     connected to your health app aggregater, e.g. iPhone, or Apple Watch, or Fitbit wristband
 
-    Note
-    ----
+    Notes
+    -----
     Other data can be found in data export (e.g. VO2Max), but not processed by DataLoader subclasses.
     In case those data needed, the self.category dict attribute should be modified.
+
+    Parameters
+    ----------
+    path : str
+        Path to unzipped local folder containing health app data
 
     Attributes
     ----------
@@ -61,15 +67,6 @@ class DataLoader():
     """
 
     def __init__(self, path):
-        """
-        Initialize with loading data from an export folder path.
-
-        Parameters
-        ----------
-        path : str
-            Path to unzipped local folder containing health app data
-
-        """
         self.df = {}
         self.categories = {}
         self.userdata = {}
@@ -606,8 +603,8 @@ class DataLoader():
 class FitbitLoader(DataLoader):
     """
     
-    Note
-    ----
+    Notes
+    -----
     One may note that Fitbit exported
     
         - ``sleep`` in local time
@@ -770,8 +767,8 @@ class FitbitLoader(DataLoader):
 class ShealthLoader(DataLoader):
     """
     
-    Note
-    ----
+    Notes
+    -----
     One may note that Samsung Health exported
     
         - ``.json`` (``step`` binning data) timestamps in local time
@@ -1138,7 +1135,8 @@ class HealthkitLoader(DataLoader):
             fname = glob.glob(self.path + "/[eE][xX][pP][oO][rR][tT].[xX][mM][lL]")[0]
         except IndexError as e:
             raise FileNotFoundError(f"Wrong 'path'. Cannot find file 'export.xml'.")
-        tree = ET.parse(fname)
+        parser = etree.XMLParser(recover=True)
+        tree = ET.parse(fname, parser=parser)
         root = tree.getroot()
         data = self._parse_xml(root)
         for tag in data:
