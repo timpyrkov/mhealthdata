@@ -1112,7 +1112,7 @@ class HealthkitLoader(DataLoader):
                         if node.tag == "MetadataEntry":
                             if node.attrib["key"] == "HKTimeZone":
                                 child.attrib["HKTimeZone"] = node.attrib["value"]
-                    records.append(child.attrib)
+                    records.append(dict(child.attrib))
             df = pd.DataFrame(records)
             df = self._parse_timestamps(df)
             data[tag] = df
