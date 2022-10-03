@@ -178,6 +178,7 @@ class DataLoader():
         values = df.values
         if "sleep" in category.lower():
             s = sleep_stage_dict(mode="encode")
+            s["None"] = 0
             values = np.vectorize(s.get)(values)
         values = values.astype(float)
         return values
