@@ -1035,11 +1035,12 @@ class HealthkitLoader(DataLoader):
     @property
     def devices_dict(self):
         dev = {"all": ["all"]}
-        for category in self.df:
-            df = self.df[category]
-            if "sourceName" in df.columns:
-                for d in np.unique(df["sourceName"].values.astype(str)):
-                    dev[d] = [d]
+        for category in self.categories:
+            if category in self.df:
+                df = self.df[category]
+                if "sourceName" in df.columns:
+                    for d in np.unique(df["sourceName"].values.astype(str)):
+                        dev[d] = [d]
         return dev
 
 
