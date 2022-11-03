@@ -1,5 +1,9 @@
 ipykernel
 nbsphinx
-numpy 
-pandas 
+lxml
+matplotlib
+numpy
+pandas
+pytz
 tqdm
+scipy

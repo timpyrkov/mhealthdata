@@ -10,8 +10,11 @@ from lxml import etree
 import json
 import glob
 from mhealthdata.utils import *
-from mhealthdata.offset import fix_timezone
-
+from mhealthdata.df2numpy import _get_time, _get_idate_imin
+from mhealthdata.df2numpy import to_1darray, to_2darray
+from mhealthdata.timezone import find_timezone_mismatch, fix_timezone_mismatch
+import warnings
+warnings.filterwarnings('ignore')
 
 
 class DataLoader():
@@ -27,7 +30,7 @@ class DataLoader():
     - per user values of "dob", "sex", and "height"
 
     Data can be accessed:
-    - as pandas dataframe in self.df dict attribute 
+    - as pandas DataFrame in self.df dict attribute 
     - as numpy arrays using get_device_data() or save_device_npz() methods
 
     Methods are device-centric and can be used to get data for any specific device
@@ -46,21 +49,23 @@ class DataLoader():
     Attributes
     ----------
     df : dict
-        Dictionary of pandas Dataframes of loaded health data for "steps", "bpm", etc.
+        Dictionary of pandas DataFrames of loaded health data for "steps", "bpm", etc.
     categories : dict
         Dictionary of health data categories. Keys used to find files. Attributes: 
-        "name" - to rename, "column" - to seek value column in corresponding Dataframe.
+        "name" - to rename, "column" - to seek value column in corresponding DataFrame.
     userdata : dict
         Dictionary of "Date-of-birth", "Biological sex", and "Height".
         Other data like country of residence, or phone number, etc. are ignored.
     start_keys : list
-        List of keywords to seek for start timestamp column in a Dataframe.
+        List of keywords to seek for start timestamp column in a DataFrame.
     end_keys : list
-        List of keywords to seek for end timestamp column in a Dataframe.
+        List of keywords to seek for end timestamp column in a DataFrame.
     tz_keys : list
-        List of keywords to seek for timezone offset column in a Dataframe.
+        List of keywords to seek for timezone in a DataFrame (NOT to be applied timestamps).
+    tz_offset : list
+        List of keywords to seek for timezone in a DataFrame (to be applied timestamps).
     dev_col : list
-        List of keywords to seek for device id column in a Dataframe.
+        List of keywords to seek for device id column in a DataFrame.
     path : list
         Path to unzipped local folder containing health app data.
 
@@ -73,7 +78,8 @@ class DataLoader():
         self.start_keys = ["start_time", "startTime", "startDate", 
                            "dateTime", "day_time"]
         self.end_keys = ["end_time", "endTime", "endDate"]
-        self.tz_keys = ["time_offset"]
+        self.tz_keys = ["time_offset", "HKTimeZone"]
+        self.tz_offset = ["time_offset"]
         self.dev_col = []
         self.path = path
 
@@ -110,12 +116,12 @@ class DataLoader():
     @property
     def dataframes(self):
         """
-        Get list of loaded dataframes.
+        Get list of loaded DataFrames.
         
         Returns
         -------
         list
-            List of loaded dataframes.
+            List of loaded DataFrames.
 
         """
         return list(self.df.keys())
@@ -136,269 +142,6 @@ class DataLoader():
         return categories
 
 
-    @staticmethod
-    def _special_cases(df, category):
-        """
-        Private method to process special cases during loading of data.
-        
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-        category : str
-            Key used to find health data files.
-
-        Returns
-        -------
-        Dataframe
-            Dataframe with applied health app-specific fixes.
-
-        """
-        return df
-
-
-    @staticmethod
-    def _get_values(df, category):
-        """
-        Private method to get record value arrays from loaded datframes.
-        
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-        category : str
-            Key used to find health data files.
-
-        Returns
-        -------
-        ndarray
-            1D array of record values, e.g. sleep stage, or stepcounts, etc.
-
-        """
-        values = df.values
-        if "sleep" in category.lower():
-            s = sleep_stage_dict(mode="encode")
-            s["None"] = 0
-            values = np.vectorize(s.get)(values)
-        values = values.astype(float)
-        return values
-
-    @staticmethod
-    def _get_time(df, keys):
-        """
-        Private method to get record timestamps from loaded datframes.
-        
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-        keys : list
-            List of keywords to seek for a column in a Dataframe.
-
-        Returns
-        -------
-        ndarray
-            1D array of datetime64.
-
-        """
-        col = find_columns_by_key(df, keys)
-        t = df[col[0]] if len(col) > 0 else None
-        return t
-
-    @staticmethod
-    def _get_idate_imin(t):
-        """
-        Private method to get record ordinal days and minutes from loaded datframes.
-        
-        Parameters
-        ----------
-        t : ndarray
-            1D array of datetime64.
-
-        Returns
-        -------
-        idate : ndarray
-            1D array of ordinal days (January 1 of year 1 is day 1).
-        imin : ndarray
-            1D array of minutes since midnight
-
-        """
-        idate = t.apply(pd.Timestamp.toordinal).values
-        imin = (60 * t.dt.hour + t.dt.minute).values
-        return idate, imin
-
-    @staticmethod
-    def _get_duration(df, duration=None):
-        """
-        Private method to get record durations [minutes] from loaded datframes.
-        
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-        duration : ndarray or None, default None
-            Initialized record durations [minutes] 1D array.
-            If None, will be initialized with np.ones().
-
-        Returns
-        -------
-        ndarray
-            1D array record durations [minutes]
-
-        """
-        if duration is None:
-            duration = np.ones((df.shape[0])).astype(int)
-        if "binning_period" in df.columns:
-            duration = df["binning_period"].values.astype(int)
-        elif "seconds" in df.columns:
-            duration = (df["seconds"].values + 1) / 60.0
-            duration = np.round(duration).astype(int)
-        duration[duration < 1] = 1
-        return duration
-
-    @staticmethod
-    def _calc_duration(t0, t1, duration=None):
-        """
-        Private method to calc record durations from start and end timestamps.
-        
-        Parameters
-        ----------
-        t0 : ndarray
-            1D array of start datetime64.
-        t0 : ndarray
-            1D array of end datetime64.
-            If None, the output will be np.ones() or duration (if not None).
-        duration : ndarray or None, default None
-            Initialized record durations [minutes] 1D array.
-            If None, will be initialized with np.ones().
-
-        Returns
-        -------
-        ndarray
-            1D array record durations [minutes].
-
-        """
-        if duration is None:
-            duration = np.ones((len(t0))).astype(int)
-        if t1 is not None:
-            duration = (t1 - t0).astype("timedelta64[m]").values.astype(int)
-        duration[duration < 1] = 1
-        return duration
-
-
-    @staticmethod
-    def _values_to_1darray(x, date_range, value, idate):
-        """
-        Private method to combine records into 1D array.
-        Used for per day values like "weight", "rhr", or "hrv".
-        
-        Parameters
-        ----------
-        x : ndarray or None
-            1D array of values (e.g. np.zeros()) or None.
-            If None, will be initialize with np.zeros() based on date_range length.
-        date_range : ndarray
-            1D array of continuous range of ordinal days.
-        value : ndarray
-            1D array of record values, e.g. sleep stage, or stepcounts, etc.
-        idate : ndarray
-            1D array of record ordinal days.
-
-        Returns
-        -------
-        ndarray
-            1D array of values of size (N days).
-
-        """
-        n = len(date_range)
-        x = np.zeros((n)) if x is None else x
-        idx = idate - date_range[0]
-        mask = (idx >= 0) & (idx < n)
-        idx = idx[mask]
-        val = value[mask]
-        for k in range(len(val)):
-            i = idx[k]
-            x[i] = val[k]
-        return x
-
-
-    @staticmethod
-    def _values_to_2darray(x, date_range, value, idate, imin, dt, mode="rate"):
-        """
-        Private method to combine records into 2D array.
-        Used for per minute values like "steps", "sleep", or "bpm".
-        
-        Parameters
-        ----------
-        x : ndarray or None
-            1D array of values (e.g. np.zeros()) or None.
-            If None, will be initialize with np.zeros() based on date_range length.
-        date_range : ndarray
-            1D array of continuous range of ordinal days.
-        value : ndarray
-            1D array of record values, e.g. sleep stage, or stepcounts, etc.
-        idate : ndarray
-            1D array of record ordinal days.
-        imin : ndarray
-            1D array of record minutes since midnight.
-        dt : ndarray
-            1D array of record durations [minutes].
-        mode : {"rate", "count"}, default "rate"
-            If "rate", the original value shall be assigned to all points.
-            If "count", the evenly distributed value shall be assigned to all record minues.
-
-        Returns
-        -------
-        ndarray
-            2D array of values of size (N days x 1440 minutes).
-
-        """
-        assert mode in ["rate", "count"]
-        n = 1440 * len(date_range)
-        x = np.zeros((n)) if x is None else x.flatten()
-        idx = 1440 * (idate - date_range[0]) + imin
-        mask = (idx >= 0) & (idx < n)
-        idx = idx[mask]
-        val = value[mask]
-        for k in range(len(val)):
-            i = idx[k]
-            j = i + dt[k]
-            if mode == "count":
-                x[i:j] = val[k] / dt[k]
-            else:
-                x[i:j] = val[k]
-        x = x.reshape(-1,1440)
-        return x
-
-    @staticmethod
-    def _get_device_slice(df, uuids, dev_col):
-        """
-        Private method to get Dataframe slice for specified device.
-        
-        Parameters
-        ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-        uuids : list
-            List of device identifiers.
-        dev_col : list
-            List of keywords to seek for device id column in a Dataframe.
-
-        Returns
-        -------
-        Dataframe
-            Dataframe slice matching mask of specified device identifiers.
-
-        """
-        mask = np.zeros((df.shape[0])).astype(bool)
-        deviceuuid = find_columns_by_key(df, dev_col)
-        if len(deviceuuid) > 0:
-            deviceuuid = df[deviceuuid[0]].values.astype(str)
-            for uuid in uuids:
-                mask[deviceuuid == uuid] = True
-        return df[mask]
-
-
     def _parse_userdata(self):
         """
         Private method to retrieve "Date-of-birth", "Biological sex", and "Height".
@@ -413,114 +156,128 @@ class DataLoader():
         return list(self.userdata.keys())
 
 
-    def _parse_timestamps(self, df):
+    @staticmethod
+    def _special_cases(df, category):
         """
-        Private method to parse columns of loaded Dataframe to datetime64.
-        Time columns are found based on class attributes self.start_keys and self.end_keys.
+        Private method to process special cases during loading of data.
         
         Parameters
         ----------
-        df : Dataframe
-            Dataframes of loaded health data for "steps", "bpm", etc.
-
-        Returns
-        -------
-        Dataframe
-            Dataframe with time columns converted to datetime64.
-
-        """
-        tkeys = self.start_keys + self.end_keys
-        tcol = find_columns_by_key(df, tkeys)
-        tz_col = find_columns_by_key(df, self.tz_keys)
-        tz_col = tz_col[0] if len(tz_col) > 0 else None
-        df = columns_to_datetime(df, tcol, tz_col)
-        return df
-
-        
-    def _parse_dataframe(self, category, device):
-        """
-        Private method to extract record data from a (device-sliced) Dataframe.
-        
-        Parameters
-        ----------
+        df : DataFrame
+            DataFrames of loaded health data for "steps", "bpm", etc.
         category : str
             Key used to find health data files.
-        device : str
-            Device name (sould match any one of self.devices).
 
         Returns
         -------
-        value : ndarray
-            1D array of record values, e.g. sleep stage, or stepcounts, etc.
-        idate : ndarray
-            1D array of record ordinal days.
-        imin : ndarray
-            1D array of record minutes since midnight.
-        duration : ndarray
-            1D array of record durations [minutes].
+        DataFrame
+            DataFrame with applied health app-specific fixes.
 
         """
-        value = idate = imin = duration = np.array([])
-        if category in self.df and device in self.devices:
-            df = self.df[category]
-            if category not in ["weight"] and device not in ["all"]:
-                uuids = self.devices_dict[device]
-                df = self._get_device_slice(df, uuids, self.dev_col)
-            if df.shape[0] > 0:
-                column = self.categories[category]["column"]
-                value = self._get_values(df[column], category)
-                t0, t1 = [self._get_time(df, k) for k in [self.start_keys, self.end_keys]]
-                idate, imin = self._get_idate_imin(t0)
-                duration = self._get_duration(df)
-                duration = self._calc_duration(t0, t1, duration)
-        return value, idate, imin, duration
+        return df
 
 
-    def _parse_arrays(self, data, dname, date_range, value, idate, imin, dt, trunc=True):
+    @staticmethod
+    def _get_duration(df):
         """
-        Private method to combine records into 1D or 2D array.
-        Ou for per minute values like "steps", "sleep", or "bpm".
+        Get record durations [minutes] from loaded datframes.
         
         Parameters
         ----------
-        data : dict
-            Dictionary of ountput ndarrays.
-        dname : str
-            Renamed data type. For example "steps" for either "pedometer_day_summary" 
-            or "HKQuantityTypeIdentifierStepCount", etc.
-        date_range : ndarray
-            1D array of continuous range of ordinal days.
-        value : ndarray
-            1D array of record values, e.g. sleep stage, or stepcounts, etc.
-        idate : ndarray
-            1D array of record ordinal days.
-        imin : ndarray
-            1D array of record minutes since midnight.
-        dt : ndarray
-            1D array of record durations [minutes].
-        trunc : bool, default True
-            If True, truncate outliers to np.uint8 range (0 - 255)
+        df : DataFrame
+            DataFrames of loaded health data for "steps", "bpm", etc.
+        duration : ndarray or None, default None
+            Initialized record durations [minutes] 1D array.
+            If None, will be initialized with np.ones().
 
         Returns
         -------
         ndarray
-            1D array of size (N days) for "weight", "rhr", or "hrv".
-            2D array of size (N days x 1440 minutes) "steps", "sleep", or "bpm".
+            1D array record durations [minutes]
 
         """
-        x = data[dname] if dname in data else None
-        if len(date_range) > 0:
-            if dname in ["weight", "rhr"]:
-                x = self._values_to_1darray(x, date_range, value, idate) 
-            else:
-                mode = "count" if dname == "steps" else "rate"
-                x = self._values_to_2darray(x, date_range, value, idate, imin, dt, mode)
-            if trunc:
-                x = np.clip(0,255,x)
-        return x
+        dt = None
+        if "binning_period" in df.columns:
+            dt = df["binning_period"].values.astype(int)
+            dt[dt < 1] = 1
+        elif "seconds" in df.columns:
+            dt = (df["seconds"].values + 1) / 60.0
+            dt = np.round(dt).astype(int)
+            dt[dt < 1] = 1
+        return dt
 
 
-    def get_device_data(self, device="all", date_range=None, trunc=True):
+    @staticmethod
+    def _get_device_slice(df, uuids, dev_col):
+        """
+        Private method to get DataFrame slice for specified device.
+        
+        Parameters
+        ----------
+        df : DataFrame
+            DataFrames of loaded health data for "steps", "bpm", etc.
+        uuids : list
+            List of device identifiers.
+        dev_col : list
+            List of keywords to seek for device id column in a DataFrame.
+
+        Returns
+        -------
+        DataFrame
+            DataFrame slice matching mask of specified device identifiers.
+
+        """
+        mask = np.zeros((df.shape[0])).astype(bool)
+        deviceuuid = find_columns_by_key(df, dev_col)
+        if len(deviceuuid) > 0:
+            deviceuuid = df[deviceuuid[0]].values.astype(str)
+            for uuid in uuids:
+                mask[deviceuuid == uuid] = True
+        return df[mask]
+
+
+    def _get_timezone(self, tstart, idate=None):
+        """
+        Search dataframes for timezone for provided ordinal dates.
+        
+        Parameters
+        ----------
+        tstart : list
+            List of columns to seek for start date/time
+        idate : ndarray or None, default None
+            1D array of continuous range of ordinal days
+
+        Returns
+        -------
+        ndarray
+            1D array of timezone offset from GMT [minutes].
+
+        """
+        tz_dict = {}
+        for category in self.categories:
+            df = self.df[category]
+            tz_col = find_columns_by_key(df, self.tz_keys)
+            tz_col = tz_col[0] if len(tz_col) > 0 else None
+            if tz_col is not None:
+                t0 = _get_time(df, tstart)
+                iday, imin = _get_idate_imin(t0)
+                idate = idate if idate is not None else to_range(iday)
+                tz = df[tz_col].values.astype(str)
+                tz = timezone_txt_to_minutes(tz)
+                for i in idate:
+                    tz_list = tz_dict[i] if i in tz_dict else []
+                    tz_list = tz_list + list(tz[iday == i])
+                    tz_dict[i] = tz_list
+        tz = np.zeros(len(idate),) * np.nan
+        for k, i in enumerate(idate):
+            tz_list = tz_dict[i] if i in tz_dict else []
+            if len(tz_list) > 0:
+                t = unique_sorted(tz_list)[0]
+                tz[k] = t[0] if len(t) > 0 else np.nan
+        return tz.astype(np.float16)
+
+
+    def get_device_data(self, device="all", idate=None, trunc=True):
         """
         Get dictionary of per day and per minute ndarrays.
         The method is device-centric and can output data for specified device.
@@ -545,21 +302,29 @@ class DataLoader():
         if device not in self.devices:
             raise KeyError(f"Wrong device '{device}'. Use 'devices' property to get valid devices.")
         for category in self.categories:
-            dname = self.categories[category]["name"]
-            value, idate, imin, dt = self._parse_dataframe(category, device)
-            try:
-                date_range = idate if date_range is None else date_range
-                date_range = dates_to_range(date_range)
-            except ValueError:
-                date_range = np.array([])
-            x = self._parse_arrays(data, dname, date_range, value, idate, imin, dt, trunc)
-            x = np.array([]) if x is None else x
-            data[dname] = x
-        data["idate"] = date_range
+            df = self.df[category]
+            if category not in ["weight"] and device not in ["all"]:
+                uuids = self.devices_dict[device]
+                df = self._get_device_slice(df, uuids, self.dev_col)
+            if df.shape[0] > 0:
+                dt = self._get_duration(df)
+                name = self.categories[category]["name"]
+                column = self.categories[category]["column"]
+                x = data[name] if name in data else None
+                if name in ["weight", "rhr"]:
+                    x, idate = to_1darray(df, column, self.start_keys, self.end_keys, self.tz_offset, idate, x)
+                else:
+                    mode = "count" if name == "steps" else "rate"
+                    x, idate = to_2darray(df, column, self.start_keys, self.end_keys, self.tz_offset, dt, idate, x, mode)
+                if trunc:
+                    x = np.clip(0,255,x)
+                data[name] = x
+        data["idate"] = idate
+        data["tz"] = self._get_timezone(self.start_keys, idate)
         return data
     
     
-    def save_device_npz(self, output_file, device="all", date_range=None, uint8=False, trunc=True):
+    def save_device_npz(self, output_file, device="all", idate=None, uint8=False, trunc=True):
         """
         Save dictionary of per day and per minute ndarrays to npz.
         The method is device-centric and can output data for specified device.
@@ -585,12 +350,12 @@ class DataLoader():
 
         """
 
-        data = self.get_device_data(device, date_range, trunc)
+        data = self.get_device_data(device, idate, trunc)
         if uint8:
             if not trunc:
                 raise  ValueError("When 'uint8' == True, should be 'trunc' = True. Wrong value: 'trunc' = False")
             for d in data:
-                data[d] = data[d].astype(np.uint8) if d != "idate" else data[d]
+                data[d] = data[d].astype(np.uint8) if d not in ["idate", "tz"] else data[d]
         if data:
             np.savez_compressed(output_file, **data)
         return bool(len(data["idate"]))
@@ -618,7 +383,7 @@ class FitbitLoader(DataLoader):
 
     Example
     -------
-	Assume we have data export ``MyFitbitData.zip`` downloaded to folder \
+    Assume we have data export ``MyFitbitData.zip`` downloaded to folder \
     ``/Users/username/Downloads/wearable_data/`` and unzipped into a subfolder \
     ``/Users/username/Downloads/wearable_data/User/``.
 
@@ -678,10 +443,11 @@ class FitbitLoader(DataLoader):
         return list(self.userdata.keys())
 
 
-    def get_device_data(self, device="all", date_range=None, trunc=True):
-        data = super().get_device_data(device, date_range, trunc)
+    def get_device_data(self, device="all", idate=None, trunc=True):
+        data = super().get_device_data(device, idate, trunc)
         if "sleep" in data and len(data["sleep"]) > 0:
-            data = fix_timezone(data)
+            data["tz"] = find_timezone_mismatch(data)
+            data = fix_timezone_mismatch(data, tz=data["tz"])
         return data
     
 
@@ -692,8 +458,8 @@ class FitbitLoader(DataLoader):
         
         Returns
         -------
-        Dataframe
-            Dataframe of raw data loaded from .csv.
+        DataFrame
+            DataFrame of raw data loaded from .csv.
 
         """
         fnamelist = glob.glob(self.path + "/*/" + "sleep" + "-*")
@@ -721,8 +487,8 @@ class FitbitLoader(DataLoader):
 
         Returns
         -------
-        Dataframe
-            Dataframe of raw data loaded from .csv.
+        DataFrame
+            DataFrame of raw data loaded from .csv.
 
         """
         fnamelist = glob.glob(self.path + "/*/" + category + "-*")
@@ -742,7 +508,7 @@ class FitbitLoader(DataLoader):
         Returns
         -------
         list
-            List of loiaded Dataframes.
+            List of loiaded DataFrames.
 
         """
         self.df = {}
@@ -750,7 +516,7 @@ class FitbitLoader(DataLoader):
             df = self.load_sleep() if category == "sleep" else self.load_nonsleep(category)
             if df is not None:
                 df = self._special_cases(df, category)
-                df = self._parse_timestamps(df)
+                df = columns_to_datetime(df, self.start_keys, self.end_keys, self.tz_offset)
                 self.df[category] = df
             elif "step" in category or "pedometer" in category:
                 raise FileNotFoundError(f"Wrong 'path'. Cannot find files for '{category}'.")
@@ -770,7 +536,7 @@ class ShealthLoader(DataLoader):
     
     Notes
     -----
-    One may note that Samsung Health exported
+    Samsung Health exports:
     
         - ``.json`` (``step`` binning data) timestamps in local time
         - ``.csv`` (``sleep``, ``bpm``, ``weight``) in UTC with \
@@ -778,18 +544,18 @@ class ShealthLoader(DataLoader):
 
     ShealthLoader
 
-        - Converts all timestamps to local time, see ``utils.columns_to_datetime()``
+        - Converts all timestamps to local time, see ``utils.columnscolumns_to_datetime()``
 
     Example
     -------
-	Assume we have data export downloaded to folder  \
+    Assume we have data export downloaded to folder  \
     ``/Users/username/Downloads/wearable_data/Samsung Health/`` \
     which contains a subfolder ``samsunghealth_<username>_<date-time>``.
 
 
- 	>>> import mhealthdata
-	>>> path = '/Users/username/Downloads/wearable_data/Samsung Health/'
-	>>> wdata = mhealthdata.ShealthLoader(path)
+    >>> import mhealthdata
+    >>> path = '/Users/username/Downloads/wearable_data/Samsung Health/'
+    >>> wdata = mhealthdata.ShealthLoader(path)
     
     """
 
@@ -874,7 +640,7 @@ class ShealthLoader(DataLoader):
             self.userdata["Biological sex"] = d["gender"][0]
             self.userdata["Height"] = d["height"][0]
         return list(self.userdata.keys())
-
+    
 
     def _binning_dict(self, category, idx):
         """
@@ -914,8 +680,8 @@ class ShealthLoader(DataLoader):
 
         Returns
         -------
-        Dataframe
-            Dataframe of raw data loaded from .csv.
+        DataFrame
+            DataFrame of raw data loaded from .csv.
 
         """
         try:
@@ -940,8 +706,8 @@ class ShealthLoader(DataLoader):
 
         Returns
         -------
-        Dataframe
-            Dataframe of raw data loaded from .csv.
+        DataFrame
+            DataFrame of raw data loaded from .csv.
 
         """
         dev, dat = self._binning_dict(category, idx)
@@ -971,7 +737,7 @@ class ShealthLoader(DataLoader):
         Returns
         -------
         list
-            List of loiaded Dataframes.
+            List of loiaded DataFrames.
 
         """
         self.df = {}
@@ -981,7 +747,7 @@ class ShealthLoader(DataLoader):
                 df = self.load_jsons(category)
             if df is not None:
                 df = self._special_cases(df, category)
-                df = self._parse_timestamps(df)
+                df = columns_to_datetime(df, self.start_keys, self.end_keys, self.tz_offset)
                 self.df[category] = df
             elif "step" in category or "pedometer" in category:
                 raise FileNotFoundError(f"Wrong 'path'. Cannot find files for '{category}'.")
@@ -1001,14 +767,12 @@ class HealthkitLoader(DataLoader):
 
     Example
     -------
-	Assume we have data export ``export.zip`` downloaded to folder  \
-    ``/Users/username/Downloads/wearable_data/`` and unzipped into a \
-    subfolder ``/Users/username/Downloads/wearable_data/apple_health_export/``.
+    Assume path contains unzipped data ``export.xml`` or ``exportación.xml``.
 
 
- 	>>> import mhealthdata
-	>>> path = '/Users/username/Downloads/wearable_data/apple_health_export/'
-	>>> wdata = mhealthdata.HealthkitLoader(path)
+    >>> import mhealthdata
+    >>> path = '/Users/username/Downloads/wearable_data/apple_health_export/'
+    >>> wdata = mhealthdata.HealthkitLoader(path)
     
     """
 
@@ -1102,7 +866,7 @@ class HealthkitLoader(DataLoader):
         Returns
         -------
         dict
-            Dictionary of Dataframes.
+            Dictionary of DataFrames.
 
         """
         data = {}
@@ -1116,7 +880,7 @@ class HealthkitLoader(DataLoader):
                                 child.attrib["HKTimeZone"] = node.attrib["value"]
                     records.append(dict(child.attrib))
             df = pd.DataFrame(records)
-            df = self._parse_timestamps(df)
+            df = columns_to_datetime(df, self.start_keys, self.end_keys, self.tz_offset)
             data[tag] = df
         return data
 
@@ -1130,11 +894,12 @@ class HealthkitLoader(DataLoader):
         Returns
         -------
         list
-            List of loiaded Dataframes.
+            List of loiaded DataFrames.
 
         """
         try:
-            fname = glob.glob(self.path + "/[eE][xX][pP][oO][rR][tT].[xX][mM][lL]")[0]
+            fname = (glob.glob(self.path + "/[eE][xX][pP][oO][rR][tT].[xX][mM][lL]") + \
+            glob.glob(self.path + "/[eE][xX][pP][oO][rR][tT][aA][cC][iI]*[nN].[xX][mM][lL]"))[0]
         except IndexError as e:
             raise FileNotFoundError(f"Wrong 'path'. Cannot find file 'export.xml'.")
         parser = etree.XMLParser(recover=True)

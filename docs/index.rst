@@ -13,15 +13,15 @@ Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Utility functions
-
-   utils.rst
-
-.. toctree::
-   :maxdepth: 2
    :caption: Examples
 
    notebook/example
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Utility functions
+
+   utils.rst
 
 
 Indices and tables
