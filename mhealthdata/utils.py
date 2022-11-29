@@ -3,11 +3,11 @@
 
 import numpy as np
 import pandas as pd
-import itertools
 import pylab as plt
-from pytz import timezone
-from datetime import datetime
+import itertools
+import datetime
 import calendar
+import pytz
 import re
 
 
@@ -241,7 +241,7 @@ def from_ordinal(date, fmt="%Y-%m-%d"):
     if isinstance(date, (list, np.ndarray)):
         date = np.array([from_ordinal(d) for d in date])
     elif not isinstance(date, str):
-        date = datetime.fromordinal(date).strftime(fmt)
+        date = datetime.datetime.fromordinal(date).strftime(fmt)
     return date
 
 
@@ -269,7 +269,7 @@ def to_ordinal(date):
             except:
                 date = np.array([to_ordinal(d) for d in date])
     elif isinstance(date, str):
-        date = datetime.strptime(date[:10], "%Y-%m-%d").toordinal()
+        date = datetime.datetime.strptime(date[:10], "%Y-%m-%d").toordinal()
     return date
 
 
@@ -328,9 +328,9 @@ def to_ordinal_month(date):
         month = np.array([ordinal_month(d) for d in date])
     else:
         if isinstance(date, str):
-            date = datetime.strptime(date[:10], "%Y-%m-%d")
+            date = datetime.datetime.strptime(date[:10], "%Y-%m-%d")
         else:
-            date = datetime.fromordinal(date)
+            date = datetime.datetime.fromordinal(date)
         month = date.month + 12 * (date.year - 1)
     return month
 
@@ -353,9 +353,9 @@ def to_ordinal_year(date):
     if isinstance(date, (list, np.ndarray)):
         year = np.array([ordinal_year(d) for d in date])
     elif isinstance(date, str):
-        year = datetime.strptime(date[:10], "%Y-%m-%d").year
+        year = datetime.datetime.strptime(date[:10], "%Y-%m-%d").year
     else:
-        year = datetime.fromordinal(date).year
+        year = datetime.datetime.fromordinal(date).year
     return year
 
 
@@ -382,7 +382,7 @@ def to_year_month_day(date):
         date = np.array([year_month_day(d) for d in date]).T
     else:
         if not isinstance(date, str):
-            date = datetime.fromordinal(date)
+            date = datetime.datetime.fromordinal(date)
             date = date.strftime("%Y-%m-%d")
         date = np.array(date.split("-")).astype(int)
     year, month, day = list(date)
@@ -547,17 +547,17 @@ def timezone_txt_to_minutes(tz):
         dt = np.array([timezone_txt_to_minutes(t) for t in tz]).T
     else:
         fmt = "%Y-%m-%d %H:%M:%S"
-        t0 = datetime.strptime("2000-01-01 00:00:00+0000", fmt + "%z")
+        t0 = datetime.datetime.strptime("2000-01-01 00:00:00+0000", fmt + "%z")
         try:
             try:
-                t1 = t0.astimezone(timezone(tz)).strftime(fmt)
+                t1 = t0.astimezone(pytz.timezone(tz)).strftime(fmt)
             except:
-                t1 = t0.astimezone(timezone("UTC")).strftime(fmt)
+                t1 = t0.astimezone(pytz.timezone("UTC")).strftime(fmt)
                 t0 = "2000-01-01 00:00:00" + re.sub("[a-zA-ZÀ-ž]", "", tz)
-                t0 = datetime.strptime(t0, fmt + "%z")
-            t0 = t0.astimezone(timezone("UTC")).strftime(fmt)
-            t1 = datetime.strptime(t1, fmt)
-            t0 = datetime.strptime(t0, fmt)
+                t0 = datetime.datetime.strptime(t0, fmt + "%z")
+            t0 = t0.astimezone(pytz.timezone("UTC")).strftime(fmt)
+            t1 = datetime.datetime.strptime(t1, fmt)
+            t0 = datetime.datetime.strptime(t0, fmt)
             dt = (t1 - t0).total_seconds() // 60
         except:
             dt = np.nan
@@ -590,7 +590,7 @@ def xticks_hours(dt=1, mode="24H", ax=None, **kwargs):
     t = np.arange(25)[::dt]
     h = t.astype(str)
     if mode.upper() == "12H":
-        h = [datetime.strptime(f"{t_}", "%H").strftime('%I %p').upper() for t_ in t % 24]
+        h = [datetime.datetime.strptime(f"{t_}", "%H").strftime('%I %p').upper() for t_ in t % 24]
     ax.set_xticks(t * 60, h, **kwargs)
     return ax
 
@@ -668,4 +668,11 @@ def xticks_dates(idate, mode="day", ax=None, **kwargs):
     ax.set_xticks(t, date, **kwargs)
     return ax
 
+
+
+
+import types
+__all__ = [name for name, thing in globals().items()
+          if not (name.startswith('_') or isinstance(thing, types.ModuleType))]
+del types
 

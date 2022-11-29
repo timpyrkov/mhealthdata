@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-from pathlib import Path
+import pathlib
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import xml.etree.ElementTree as ET
-from lxml import etree
+import lxml
+import tqdm
 import json
 import glob
 from mhealthdata.utils import *
@@ -416,7 +416,7 @@ class FitbitLoader(DataLoader):
         fnames += glob.glob(self.path + "/*/*.json")
         categories = []
         for fname in fnames:
-            category = Path(fname).stem.split("-")[0]
+            category = pathlib.Path(fname).stem.split("-")[0]
             if category not in categories:
                 categories.append(category)
         return categories
@@ -466,7 +466,7 @@ class FitbitLoader(DataLoader):
         if len(fnamelist) == 0:
             return None
         df = []
-        for fname in tqdm(fnamelist):
+        for fname in tqdm.tqdm(fnamelist):
             for json_data in json.load(open(fname)):
                 df.append(pd.json_normalize(json_data["levels"]["data"]))
                 if "shortData" in json_data["levels"]:
@@ -494,7 +494,7 @@ class FitbitLoader(DataLoader):
         fnamelist = glob.glob(self.path + "/*/" + category + "-*")
         if len(fnamelist) == 0:
             return None
-        df = [pd.json_normalize(json.load(open(fname))) for fname in tqdm(fnamelist)]
+        df = [pd.json_normalize(json.load(open(fname))) for fname in tqdm.tqdm(fnamelist)]
         df = pd.concat(df, ignore_index=True) if len(df) > 0 else pd.DataFrame()
         return df
 
@@ -715,7 +715,7 @@ class ShealthLoader(DataLoader):
         if len(fnamelist) == 0:
             return None
         df = []
-        for fname in tqdm(fnamelist):
+        for fname in tqdm.tqdm(fnamelist):
             df_ = pd.json_normalize(json.load(open(fname)))
             nrec, ncol = df_.shape
             if ncol > 0:
@@ -872,7 +872,7 @@ class HealthkitLoader(DataLoader):
         data = {}
         for tag in ["Record", "Workout", "Me"]:
             records = []
-            for child in tqdm(root):
+            for child in tqdm.tqdm(root):
                 if child.tag == tag:
                     for node in list(child):
                         if node.tag == "MetadataEntry":
@@ -902,7 +902,7 @@ class HealthkitLoader(DataLoader):
             glob.glob(self.path + "/[eE][xX][pP][oO][rR][tT][aA][cC][iI]*[nN].[xX][mM][lL]"))[0]
         except IndexError as e:
             raise FileNotFoundError(f"Wrong 'path'. Cannot find file 'export.xml'.")
-        parser = etree.XMLParser(recover=True)
+        parser = lxml.etree.XMLParser(recover=True)
         tree = ET.parse(fname, parser=parser)
         root = tree.getroot()
         data = self._parse_xml(root)
@@ -918,4 +918,9 @@ class HealthkitLoader(DataLoader):
         
 
 
+
+import types
+__all__ = [name for name, thing in globals().items()
+          if not (name.startswith('_') or isinstance(thing, types.ModuleType))]
+del types
 
