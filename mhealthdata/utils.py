@@ -379,7 +379,7 @@ def to_year_month_day(date):
 
     """
     if isinstance(date, (list, np.ndarray)):
-        date = np.array([year_month_day(d) for d in date]).T
+        date = np.array([to_year_month_day(d) for d in date]).T
     else:
         if not isinstance(date, str):
             date = datetime.datetime.fromordinal(date)
