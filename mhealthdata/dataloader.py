@@ -5,13 +5,14 @@ import pathlib
 import numpy as np
 import pandas as pd
 import xml.etree.ElementTree as ET
+import lxml.etree
 import lxml
 import tqdm
 import json
 import glob
 from mhealthdata.utils import *
 from mhealthdata.df2numpy import _get_time, _get_idate_imin
-from mhealthdata.df2numpy import to_1darray, to_2darray
+from mhealthdata.df2numpy import to_1darray, to_2darray, combine_arrays
 from mhealthdata.timezone import find_timezone_mismatch, fix_timezone_mismatch
 import warnings
 warnings.filterwarnings('ignore')
@@ -277,7 +278,7 @@ class DataLoader():
         return tz.astype(np.float16)
 
 
-    def get_device_data(self, device="all", idate=None, trunc=True):
+    def get_device_data(self, device="all", idate=None, uint8=True):
         """
         Get dictionary of per day and per minute ndarrays.
         The method is device-centric and can output data for specified device.
@@ -289,8 +290,8 @@ class DataLoader():
         date_range : ndarray or None, default None
             1D array of continuous range of ordinal days.
             If None, automatically get from on min and max dates of "steps".
-        trunc : bool, default True
-            If True, truncate outliers to np.uint8 range (0 - 255)
+        uint8 : bool, default True
+            Flag to cast all health data to np.uint8 to save disk space.
 
         Returns
         -------
@@ -312,19 +313,17 @@ class DataLoader():
                 column = self.categories[category]["column"]
                 x = data[name] if name in data else None
                 if name in ["weight", "rhr"]:
-                    x, idate = to_1darray(df, column, self.start_keys, self.end_keys, self.tz_offset, idate, x)
+                    x, idate = to_1darray(df, column, self.start_keys, self.end_keys, self.tz_offset, idate, x, uint8)
                 else:
                     mode = "count" if name == "steps" else "rate"
-                    x, idate = to_2darray(df, column, self.start_keys, self.end_keys, self.tz_offset, dt, idate, x, mode)
-                if trunc:
-                    x = np.clip(0,255,x)
+                    x, idate = to_2darray(df, column, self.start_keys, self.end_keys, self.tz_offset, dt, idate, x, uint8, mode)
                 data[name] = x
         data["idate"] = idate
         data["tz"] = self._get_timezone(self.start_keys, idate)
         return data
     
     
-    def save_device_npz(self, output_file, device="all", idate=None, uint8=False, trunc=True):
+    def save_device_npz(self, output_file, device="all", idate=None, uint8=True):
         """
         Save dictionary of per day and per minute ndarrays to npz.
         The method is device-centric and can output data for specified device.
@@ -338,10 +337,8 @@ class DataLoader():
         date_range : ndarray or None, default None
             1D array of continuous range of ordinal days.
             If None, automatically get from on min and max dates of "steps".
-        uint8 : bool, default False
+        uint8 : bool, default True
             Flag to cast all health data to np.uint8 to save disk space.
-        trunc : bool, default True
-            If True, truncate outliers to np.uint8 range (0 - 255)
 
         Returns
         -------
@@ -350,12 +347,7 @@ class DataLoader():
 
         """
 
-        data = self.get_device_data(device, idate, trunc)
-        if uint8:
-            if not trunc:
-                raise  ValueError("When 'uint8' == True, should be 'trunc' = True. Wrong value: 'trunc' = False")
-            for d in data:
-                data[d] = data[d].astype(np.uint8) if d not in ["idate", "tz"] else data[d]
+        data = self.get_device_data(device, idate, uint8)
         if data:
             np.savez_compressed(output_file, **data)
         return bool(len(data["idate"]))
@@ -887,7 +879,7 @@ class HealthkitLoader(DataLoader):
 
     def load_data(self):
         """
-        Load data from .csv and .json files.
+        Load data from .xml file.
         Cycling over category from self.categories attribute.
         Path to seek files is taken from self.path attribute.
         

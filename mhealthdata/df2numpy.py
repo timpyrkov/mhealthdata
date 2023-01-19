@@ -103,7 +103,7 @@ def _calc_duration(t0, t1):
     return dt
 
 
-def to_1darray(df, column, tstart, tend=None, tz=None, idate=None, x=None):
+def to_1darray(df, column, tstart, tend=None, tz=None, idate=None, x=None, uint8=False):
     """
     Get value-per-day health data ("weight", "rhr", or "hrv") as 1D array.
     
@@ -123,6 +123,8 @@ def to_1darray(df, column, tstart, tend=None, tz=None, idate=None, x=None):
         1D array of continuous range of ordinal days
     x : ndarray or None, default None
         Initialized 1D array; if None, will be initialized with np.zeros()
+    uint8 : bool, default False
+        Flag to cast all health data to np.uint8 to save disk space
 
     Returns
     -------
@@ -146,10 +148,12 @@ def to_1darray(df, column, tstart, tend=None, tz=None, idate=None, x=None):
     for k in range(len(val)):
         i = idx[k]
         x[i] = val[k]
+    if uint8:
+        x = np.clip(x,0,255).astype(np.uint8)
     return x, idate
 
 
-def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=None, mode="rate"):
+def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=None, uint8=False, mode="rate"):
     """
     Get value-per-minute health data ("steps", "sleep", or "bpm") as 2D array.
     
@@ -166,11 +170,13 @@ def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=No
     tz : list or None, default None
         List of columns to seek for date/time time zone
     dt : str, ndarray, or None, default None
-        Column name or 1D array of record durations [minutes].
+        Column name or 1D array of record durations [seconds].
     idate : ndarray or None, default None
         1D array of continuous range of ordinal days
     x : ndarray or None, default None
         Initialized 1D array; if None, will be initialized with np.zeros()
+    uint8 : bool, default False
+        Flag to cast all health data to np.uint8 to save disk space
     mode : {"rate", "count"}, default "rate"
         Way to treat values of records longer than 1 minute: 
         if "rate" - duplicate values, if "count" - split evenly between minutes
@@ -189,7 +195,8 @@ def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=No
     t0, t1 = [_get_time(df, k) for k in [tstart, tend]]
     iday, imin = _get_idate_imin(t0)
     dt = df[dt].values if isinstance(dt, str) else dt
-    dt = dt if dt is not None else _calc_duration(t0, t1)
+    dt = dt / 60 if dt is not None else _calc_duration(t0, t1)
+    dt = np.ceil(dt).astype(int)
     idate = idate if idate is not None else to_range(iday)
     n = 1440 * len(idate)
     x = np.zeros((n)) if x is None else x.flatten()
@@ -205,9 +212,56 @@ def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=No
         else:
             x[i:j] = val[k]
     x = x.reshape(-1,1440)
+    if uint8:
+        x = np.clip(x,0,255).astype(np.uint8)
     return x, idate
 
 
+def combine_arrays(*args, labels=None, mode="valid"):
+    """
+    Convert arrays of e.g. steps, bpm, sleep into 
+    the same length and combine in a dictionary
+    
+    Parameters
+    ----------
+    *args
+        Tuples of (data, date) e.g. as output by to_2darray()
+    labels : list or None, default None
+        List of keyword labels for data
+    mode : {"valid", "full"}, default "valid"
+        If "valid" all arrys shrinked to min overlapping range, else expanded
+        
+    Returns
+    -------
+    dict
+        Dictionary with numpy arrays of the same length
+    
+    """
+    assert labels is None or len(labels) == len(args)
+    assert mode in ["full", "valid"]
+    data = {}
+    if mode == "valid":
+        t0 = max(a[1][0] for a in args)
+        t1 = min(a[1][-1] for a in args) + 1
+        data["idate"] = np.arange(t0,t1)
+        for i in range(len(args)):
+            label = f"x{i}" if labels is None else labels[i]
+            mask = (args[i][1] >= t0) & (args[i][1] < t1)
+            data[label] = args[i][0][mask]
+    if mode == "full":
+        t0 = min(a[1][0] for a in args)
+        t1 = max(a[1][-1] for a in args) + 1
+        data["idate"] = np.arange(t0,t1)
+        for i in range(len(args)):
+            x, t = args[i]
+            label = f"x{i}" if labels is None else labels[i]
+            val = np.zeros((t1-t0,1440), x.dtype)
+            i0 = t[0] - t0
+            i1 = i0 + len(t)
+            val[i0:i1] = x
+            data[label] = val
+    return data
+        
 
 
 
