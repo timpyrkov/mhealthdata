@@ -1,5 +1,6 @@
 ipykernel
 nbsphinx
+sphinx-rtd-theme
 lxml
 matplotlib
 numpy
@@ -7,3 +8,4 @@ pandas
 pytz
 tqdm
 scipy
+mhealthdata

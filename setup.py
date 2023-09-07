@@ -7,7 +7,7 @@ def read(fname):
 
 setup(
     name="mhealthdata",
-    version="0.1.6",
+    version="0.1.7",
     author="Tim Pyrkov",
     author_email="tim.pyrkov@gmail.com",
     description="Wearable health data to NumPy",
@@ -26,7 +26,7 @@ setup(
     install_requires=[
         "lxml",
         "matplotlib",
-        "numpy",
+        "numpy>=1.20",
         "pandas",
         "pytz",
         "tqdm",

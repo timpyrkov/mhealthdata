@@ -181,30 +181,33 @@ class DataLoader():
     @staticmethod
     def _get_duration(df):
         """
-        Get record durations [minutes] from loaded datframes.
+        Get record durations from loaded datframes.
         
+        Notes
+        -----
+        "binning_period" is treated as [minutes]
+        "stage_duration" and "seconds" are treated as [seconds]
+
         Parameters
         ----------
         df : DataFrame
             DataFrames of loaded health data for "steps", "bpm", etc.
-        duration : ndarray or None, default None
-            Initialized record durations [minutes] 1D array.
-            If None, will be initialized with np.ones().
 
         Returns
         -------
         ndarray
-            1D array record durations [minutes]
+            1D array record durations [seconds]
 
         """
         dt = None
         if "binning_period" in df.columns:
-            dt = df["binning_period"].values.astype(int)
-            dt[dt < 1] = 1
+            dt = 60 * df["binning_period"].values.astype(int)
         elif "seconds" in df.columns:
-            dt = (df["seconds"].values + 1) / 60.0
+            dt = (df["seconds"].values + 1)
             dt = np.round(dt).astype(int)
-            dt[dt < 1] = 1
+        elif "stage_duration" in df.columns:
+            dt = (df["stage_duration"].values + 1)
+            dt = np.round(dt).astype(int)
         return dt
 
 

@@ -144,7 +144,6 @@ def _baseline_timezone(tz, nday, dt):
         bz[:idx.min()] = bz[idx.min()]
         bz[idx.max():] = bz[idx.max()]
         idx = find_intervals(np.isnan(bz))
-        print("DEBUG", idx.shape, idx)
         if any(np.isfinite(bz)):
             for i0, i1 in idx:
                 tx, _ = unique_sorted(tz[i0:i1])

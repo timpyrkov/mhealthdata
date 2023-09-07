@@ -98,7 +98,8 @@ def _calc_duration(t0, t1):
     """
     dt = np.ones((len(t0))).astype(int)
     if t1 is not None:
-        dt = (t1 - t0).astype("timedelta64[m]").values.astype(int)
+        dt = (t1 - t0).astype("timedelta64[s]").values
+        dt = (dt / 60).astype(int)
         dt[dt < 1] = 1
     return dt
 
@@ -194,8 +195,8 @@ def to_2darray(df, column, tstart, tend=None, tz=None, dt=None, idate=None, x=No
     val = _get_values(df, column)
     t0, t1 = [_get_time(df, k) for k in [tstart, tend]]
     iday, imin = _get_idate_imin(t0)
-    dt = df[dt].values if isinstance(dt, str) else dt
-    dt = dt / 60 if dt is not None else _calc_duration(t0, t1)
+    dt = df[dt].values if isinstance(dt, str) else dt # seconds
+    dt = dt / 60 if dt is not None else _calc_duration(t0, t1) # minutes
     dt = np.ceil(dt).astype(int)
     idate = idate if idate is not None else to_range(iday)
     n = 1440 * len(idate)
