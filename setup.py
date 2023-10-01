@@ -7,7 +7,7 @@ def read(fname):
 
 setup(
     name="mhealthdata",
-    version="0.1.7",
+    version="0.1.8",
     author="Tim Pyrkov",
     author_email="tim.pyrkov@gmail.com",
     description="Wearable health data to NumPy",

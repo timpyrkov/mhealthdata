@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
+import os
 import pathlib
 import numpy as np
 import pandas as pd
@@ -82,7 +83,7 @@ class DataLoader():
         self.tz_keys = ["time_offset", "HKTimeZone"]
         self.tz_offset = ["time_offset"]
         self.dev_col = []
-        self.path = path
+        self.path = os.path.expanduser(path)
 
 
     @property
@@ -383,7 +384,7 @@ class FitbitLoader(DataLoader):
     ``/Users/username/Downloads/wearable_data/User/``.
 
     >>> import mhealthdata
-    >>> path = '/Users/username/Downloads/wearable_data/User/'
+    >>> path = '~/Downloads/wearable_data/User/'
     >>> wdata = mhealthdata.FitbitLoader(path)
     
     """
@@ -549,7 +550,7 @@ class ShealthLoader(DataLoader):
 
 
     >>> import mhealthdata
-    >>> path = '/Users/username/Downloads/wearable_data/Samsung Health/'
+    >>> path = '~/Downloads/wearable_data/Samsung Health/'
     >>> wdata = mhealthdata.ShealthLoader(path)
     
     """
@@ -605,7 +606,9 @@ class ShealthLoader(DataLoader):
     
     @property
     def all_categories(self):
-        fnames = glob.glob(self.path + "/*/*.csv")
+        fnames = glob.glob(self.path + "/*.csv")
+        if len(fnames) == 0:
+            fnames = glob.glob(self.path + "/*/*.csv")
         categories = []
         for fname in fnames:
             category = fname.split(".")
@@ -680,7 +683,10 @@ class ShealthLoader(DataLoader):
 
         """
         try:
-            fname = glob.glob(self.path + "/*/*." + category + ".*.csv")[0]
+            fnames = glob.glob(self.path + "/*." + category + ".*.csv")
+            if len(fnames) == 0:
+                fnames = glob.glob(self.path + "/*/*." + category + ".*.csv")
+            fname = fnames[0]
         except IndexError as e:
             return None
         df = pd.read_csv(fname, skiprows=1, index_col=False)
@@ -706,7 +712,9 @@ class ShealthLoader(DataLoader):
 
         """
         dev, dat = self._binning_dict(category, idx)
-        fnamelist = glob.glob(self.path + '/*/jsons/*' + category + '*/*/*.' + idx + '.json')
+        fnamelist = glob.glob(self.path + '/jsons/*' + category + '*/*/*.' + idx + '.json')
+        if len(fnamelist) == 0:
+            fnamelist = glob.glob(self.path + '/*/jsons/*' + category + '*/*/*.' + idx + '.json')
         if len(fnamelist) == 0:
             return None
         df = []
@@ -766,7 +774,7 @@ class HealthkitLoader(DataLoader):
 
 
     >>> import mhealthdata
-    >>> path = '/Users/username/Downloads/wearable_data/apple_health_export/'
+    >>> path = '~/Downloads/wearable_data/apple_health_export/'
     >>> wdata = mhealthdata.HealthkitLoader(path)
     
     """
